@@ -1,3 +1,4 @@
+from msilib.schema import Class
 import pygame
 import pygame, sys
 from pygame.locals import *
@@ -32,8 +33,8 @@ def main():
     #CONSTANTS CHANGE HERE -----------------------------
 
     #ducks/bread to spawn initially
-    ducksPerGeneration = 5
-    BreadPerGeneration = 35
+    ducksPerGeneration = 20
+    BreadPerGeneration = 30
     
     minbreaddistance = 15 #how close does a duck need to be to eat a bread
 
@@ -52,6 +53,10 @@ def main():
     howmanyduckslist = [] #used for graph
     duckspeedmulitplierForList = 10 # used to add to graph 
 
+    #FOXES:
+    AmountOfFoxes = 2
+
+    IMAGESIZE = 25
 
     #---------------------------------------------------------------------------
 
@@ -64,10 +69,13 @@ def main():
     #pics
 
     DuckPic = pygame.image.load("Duck Sprite.jpg").convert_alpha()
-    DuckPic = pygame.transform.smoothscale( DuckPic, (25, 25))
+    DuckPic = pygame.transform.smoothscale( DuckPic, (IMAGESIZE, IMAGESIZE))
 
     BreadPic = pygame.image.load("breadpic.jpg").convert_alpha()
-    BreadPic = pygame.transform.smoothscale(BreadPic, (25, 25))
+    BreadPic = pygame.transform.smoothscale(BreadPic, (IMAGESIZE, IMAGESIZE))
+
+    FoxPic = pygame.image.load("foxpic.jpg").convert_alpha()
+    FoxPic = pygame.transform.smoothscale(FoxPic, (45, 45))  
 
     class Food(pygame.sprite.Sprite):
         def __init__(self, xpos,ypos):
@@ -95,6 +103,7 @@ def main():
             self.speed = speed
             self.hunger = hunger
             self.movement = movement
+            self.eaten = False
 
         def distanceTo( self, bread_sprite ):
             """ Calculate the distance from us to a FoodItem """
@@ -109,46 +118,83 @@ def main():
             distance = math.sqrt( ( x_part * x_part ) + ( y_part * y_part ) )
             return distance
 
+        def eat( self, ate=True ):
+            self.eaten = ate
+
         def __str__( self ):
-            return "Duck at (%d,%d)" % ( self.rect.x, self.rect.y )
+            value = "Food at (%d,%d)" % ( self.rect.x, self.rect.y )
+            if ( self.eaten ):
+                value += " (eaten)"
+            return value
+
+    class Fox(pygame.sprite.Sprite):
+        def __init__(self,xpos,ypos,speed,hunger,movement):
+            super().__init__()
+            self.image = FoxPic
+            self.rect = self.image.get_rect()
+            self.rect.topleft = ( xpos, ypos )
+            self.speed = speed
+            self.hunger = hunger
+            self.movement = movement
+
+        def distanceTo( self, other_thing ):
+            """ Calculate the distance from us to something else """
+            fox_x, fox_y   = self.rect.center
+            otherthingx, otherthingy = other_thing.rect.center
+
+            #https://en.wikipedia.org/wiki/Euclidean_distance
+
+            x_part = ( otherthingx - fox_x )
+            y_part = ( otherthingy - fox_y )
+
+            distance = math.sqrt( ( x_part * x_part ) + ( y_part * y_part ) )
+            return distance
+
+        def __str__( self ):
+            return "Fox at (%d,%d)" % ( self.rect.x, self.rect.y )
 
     class notEnoughGenes(Exception):
        pass
 
-    #make the ducks and food
+    #make the ducks and food and foxes
     Ducks = []
 
     for i in range(ducksPerGeneration):
-        Ducks.append(Duck(xpos = random.randint(minxy, maxx), ypos = random.randint(minxy, maxy), speed =(random.randint(2,8)), hunger = 1000, movement = random.randint(1,100)))
+        Ducks.append(Duck(xpos = random.randint(minxy, maxx), ypos = random.randint(minxy, maxy), speed =(random.randint(1,8)), hunger = 1000, movement = random.randint(1,100)))
 
     FoodList = []
 
     for i in range (BreadPerGeneration):
         FoodList.append(Food(random.randint(30,600),random.randint(30,600)))
 
+    Foxes = []
+
+    for i in range (AmountOfFoxes):
+        Foxes.append(Fox(xpos = random.randint(minxy, maxx), ypos = random.randint(minxy, maxy), speed =(random.randint(1,3)), hunger = 3000, movement = random.randint(1,100)))
+
     #defining evolution and its propteries
 
-    def evolve():
+    def evolve(OrganismList,ClassType):
 
-        duckspeedlist = [] #acts as the gene pool for speed
+        genePool = [] #acts as the gene pool for speed
 
-        for duck in Ducks:
-            if duck.hunger > minhungertoreproduce: #must not be too hungry to pass on genes #set to 100 usually
-                if duck.speed != 0: #cannot reprodce if you cant move 
-                    duckspeedlist.append(duck.speed) #add to gene pool
+        for organism in OrganismList:
+            if organism.hunger > minhungertoreproduce: #must not be too hungry to pass on genes #set to 100 usually
+                if organism.speed != 0: #cannot reprodce if you cant move 
+                    genePool.append(organism.speed) #add to gene pool
 
-        if len(duckspeedlist) < 2:
+        if len(genePool) < 2:
             raise notEnoughGenes
 
-        if len(duckspeedlist) >= 2:
+        if len(genePool) >= 2:
 
             newspeedlist = []
 
             genecounter = 0
 
-            for j in range(int(len(duckspeedlist)/2)):
+            for j in range(int(len(genePool)/2)):
 
-                GeneForNewSpeed = (duckspeedlist[genecounter] + duckspeedlist[genecounter+1])/2
+                GeneForNewSpeed = (genePool[genecounter] + genePool[genecounter+1])/2
 
                 #example ==== duckspeedlist = [1,3] where 1 and 3 are speeds which have managed to reproduce
                 #then we take the average of those two genes and add mutation (slowerorfaster)
@@ -169,7 +215,7 @@ def main():
                 if gene > 1:
                     slowerorfaster = random.randint(-2,2) #mutation
 
-                Ducks.append(Duck(xpos = random.randint(minxy, maxx), ypos = random.randint(minxy, maxy), speed =(gene+ slowerorfaster), hunger = 1000, movement = random.randint(1,100)))
+                OrganismList.append(ClassType(xpos = random.randint(minxy, maxx), ypos = random.randint(minxy, maxy), speed =(gene+ slowerorfaster), hunger = 1000, movement = random.randint(1,100)))
             print("evolution success!")
             print(timecounter)
 
@@ -218,13 +264,61 @@ def main():
             print("all ducks died")
             pygame.quit()
             sys.exit()
-        
+
+        for i,FoxGuy in enumerate(Foxes):
+            closestducklist = [] #reset list of closest breads for all ducks
+            for ducky in Ducks:
+                # Made a list of ducks & their distance
+
+                closestducklist.append( [ FoxGuy.distanceTo( ducky ), ducky ] )
+
+                closestducklist.sort( key=lambda x : x[0] )  # sort by distance
+                closest_bread_distance, closest_bread = closestducklist[0]
+
+            if True:
+            #move fox to closest bread
+                if FoxGuy.rect.x < closest_bread.rect.x:
+                    FoxGuy.rect.x += 1 * FoxGuy.speed
+                    
+                if FoxGuy.rect.x > closest_bread.rect.x:
+                    FoxGuy.rect.x -= 1 * FoxGuy.speed
+
+                if FoxGuy.rect.y > closest_bread.rect.y:
+                    FoxGuy.rect.y -= 1 * FoxGuy.speed   
+
+                if FoxGuy.rect.y < closest_bread.rect.y: 
+                    FoxGuy.rect.y += 1 * FoxGuy.speed            
+
+            FoxGuy.hunger = FoxGuy.hunger - (penaltyformoving * FoxGuy.speed) #FoxGuy hunger goes down, faster duck looses more hunger
+            if FoxGuy.speed <= 0:
+                FoxGuy.hunger -= 1000 #incase duck has 0 speed
+
+            if FoxGuy.hunger < 0: #if duck at 0 hunger he dies :(
+                del Foxes[i]
+
+            # if distance to duck is low, FoxGuy eats it
+            
+            for distance, ducky in closestducklist:
+                if ( distance < minbreaddistance ):    # pixels #this is also min bread distance but we use same for fox
+                    print( "EATING DUCKY" )
+                    ducky.eat()
+                    
+                    if FoxGuy.hunger < 5000:
+                        Ducky.hunger += breadeatreward #REWARD FOR EATING BREAD
+                        #print(Ducky.hunger)
+                    
+                    if ( len(Ducks) > 0 ):
+                        #print( "ATE %d BREADS" % ( breads_to_add ) )
+                        # remove the eaten breads
+                        Ducks = [ d for d in Ducks if ( not d.eaten ) ]
+
 
         for i,Ducky in enumerate(Ducks):
 
             closestlist = [] #reset list of closest breads for all ducks
             for bread in FoodList:
                 # Made a list of breads & their distance
+
                 closestlist.append( [ Ducky.distanceTo( bread ), bread ] )
 
                 closestlist.sort( key=lambda x : x[0] )  # sort by distance
@@ -283,6 +377,10 @@ def main():
         # fill the background
         DISPLAY.fill(blue)
 
+        #paint the fox 
+        for FoxGuy in (Foxes):
+            DISPLAY.blit(FoxGuy.image, (FoxGuy.rect.topleft))
+
         # paint the bread
         for FoodItem in (FoodList):
             DISPLAY.blit(FoodItem.image, (FoodItem.rect.topleft))
@@ -317,21 +415,27 @@ def main():
 
         if timecounter > timetoevolve:
             try:
-                
-                evolve()
+                #def evolve(OrganismList,ClassType):
+                evolve(Ducks,Duck)
                 timecounter = 0
-
             except notEnoughGenes:
                 pass
 
+        if timecounter > timetoevolve - 200:
+            try:
+                #def evolve(OrganismList,ClassType):
+                evolve(Foxes,Fox)
+                timecounter = 0
+            except notEnoughGenes:
+                pass
 
             #after evolution timecounter is set to 0 since we need to wait for time to evolve again
-        if len(Ducks) < 2:
-            print(len(Ducks))
-            print("not enough ducks made it to reproduce :(")
-            show_data()
-            pygame.quit()
-            sys.exit()
+        #if len(Ducks) < 2:
+            #print(len(Ducks))
+            #print("not enough ducks made it to reproduce --------- :(")
+            #show_data()
+            #pygame.quit()
+            #sys.exit()
 
         events = pygame.event.get() #this spacebar pause thing does not work
         for event in events:
